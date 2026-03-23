@@ -178,9 +178,9 @@
         terminal.scrollTop = terminal.scrollHeight;
     }
 
-    // --- THE WATERFALL FETCH ---
+    // --- THE FIX: STRICT GDELT URL FORMATTING ---
     async function fetchGdeltData() {
-        // Strict parameters: mode=PointData & format=GeoJSON
+        // Added &mode=PointData and capitalized format=GeoJSON to prevent HTTP 400 Bad Request
         const targetUrl = "https://api.gdeltproject.org/api/v2/geo/geo?query=tone%3C-5&mode=PointData&format=GeoJSON&timespan=24h";
         const encoded = encodeURIComponent(targetUrl);
         
@@ -196,7 +196,7 @@
                 log(`Attempting: ${route.name}`, "info");
                 
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+                const timeoutId = setTimeout(() => controller.abort(), 8000); 
                 
                 const res = await fetch(route.url, { 
                     cache: "no-store",
@@ -242,8 +242,8 @@
         try {
             const data = await fetchGdeltData();
             
-            setTimeout(() => { loading.style.display = 'none'; }, 800);
-            connStatus.innerText = "● SECURE UPLINK ESTABLISHED (24H)";
+            setTimeout(() => { loading.style.display = 'none'; }, 500);
+            connStatus.innerText = "● SECURE UPLINK ESTABLISHED";
             connStatus.style.color = "#00ff00";
             panelTitle.innerText = "LIVE EVENT STREAM";
             processData(data.features, false);
@@ -252,7 +252,7 @@
             log("FATAL: Cannot reach data source.", "error");
             log("Activating Simulation Engine.", "info");
             
-            setTimeout(() => { loading.style.display = 'none'; }, 1500);
+            setTimeout(() => { loading.style.display = 'none'; }, 1000);
             connStatus.innerText = "⚠ OFFLINE - SIMULATION ACTIVE";
             connStatus.style.color = "#ffaa00";
             panelTitle.innerText = "SIMULATED EVENT STREAM";
@@ -263,6 +263,7 @@
     function processData(features, isSim) {
         let count = isSim ? 500 : features.length;
         
+        // Critical Threshold adjusted for 24 hours of global news
         let percent = Math.min((count / 2000) * 100, 100);
         gaugePointer.style.left = percent + "%";
 
@@ -283,7 +284,7 @@
         } else {
             features.forEach(f => {
                 const [lon, lat] = f.geometry.coordinates;
-                // Filter out bad coordinates from GDELT
+                // GDELT frequently places "unknown" locations at 0,0 - we filter those out
                 if (lat !== 0 && lon !== 0) { 
                     createDot(lat, lon, f.properties.name);
                 }
@@ -356,7 +357,7 @@
                 addTickerItem(item.properties.name, "Negative Sentiment");
             }
             i++;
-        }, 1200);
+        }, 1000);
     }
 
     function addTickerItem(loc, text) {
