@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Global Sadness Monitor | Final Live Build</title>
+    <title>Global Sadness Monitor | Final Optimized Build</title>
     <style>
         :root {
             --bg-color: #000;
@@ -178,16 +178,16 @@
         terminal.scrollTop = terminal.scrollHeight;
     }
 
-    // --- THE FIX: STRICT GDELT URL FORMATTING ---
+    // --- OPTIMIZED FETCH LOGIC ---
     async function fetchGdeltData() {
-        // Added &mode=PointData and capitalized format=GeoJSON to prevent HTTP 400 Bad Request
-        const targetUrl = "https://api.gdeltproject.org/api/v2/geo/geo?query=tone%3C-5&mode=PointData&format=GeoJSON&timespan=24h";
+        // Dropped timespan to 1h. This forces GDELT to respond in milliseconds, preventing proxy timeouts.
+        const targetUrl = "https://api.gdeltproject.org/api/v2/geo/geo?query=tone%3C-5&mode=PointData&format=GeoJSON&timespan=1h";
         const encoded = encodeURIComponent(targetUrl);
         
         const routes = [
-            { name: "AllOrigins Proxy", url: `https://api.allorigins.win/get?url=${encoded}` },
+            { name: "AllOrigins Proxy", url: `https://api.allorigins.win/raw?url=${encoded}` },
             { name: "CodeTabs Proxy", url: `https://api.codetabs.com/v1/proxy?quest=${targetUrl}` },
-            { name: "CorsProxy.io", url: `https://corsproxy.io/?${encoded}` },
+            { name: "ThingProxy", url: `https://thingproxy.freeboard.io/fetch/${targetUrl}` },
             { name: "Direct GDELT API", url: targetUrl }
         ];
 
@@ -196,7 +196,8 @@
                 log(`Attempting: ${route.name}`, "info");
                 
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000); 
+                // Expanded timeout allowance to 20 seconds just in case
+                const timeoutId = setTimeout(() => controller.abort(), 20000); 
                 
                 const res = await fetch(route.url, { 
                     cache: "no-store",
@@ -210,24 +211,27 @@
                     continue; 
                 }
 
+                const text = await res.text();
                 let data;
-                if (route.name === "AllOrigins Proxy") {
-                    const proxyData = await res.json();
-                    if (!proxyData.contents) throw new Error("Proxy returned empty contents");
-                    data = JSON.parse(proxyData.contents);
-                } else {
-                    data = await res.json();
+                try {
+                    data = JSON.parse(text);
+                } catch (err) {
+                    log(`Error: Proxy returned invalid JSON.`, "error");
+                    continue;
                 }
 
                 if (data && data.features && data.features.length > 0) {
                     log(`Connection Established! Fetched ${data.features.length} points.`, "success");
                     return data;
+                } else if (data && data.features && data.features.length === 0) {
+                     log(`Success, but 0 events found in the last 1 hour.`, "info");
+                     throw new Error("Zero events");
                 } else {
-                    log(`Warning: Zero features returned`, "error");
+                    log(`Warning: Unrecognized data format`, "error");
                 }
             } catch (e) {
                 if (e.name === 'AbortError') {
-                    log(`Error: Server Timeout`, "error");
+                    log(`Error: Server Timeout (20s)`, "error");
                 } else {
                     log(`Error: ${e.message}`, "error");
                 }
@@ -242,8 +246,8 @@
         try {
             const data = await fetchGdeltData();
             
-            setTimeout(() => { loading.style.display = 'none'; }, 500);
-            connStatus.innerText = "● SECURE UPLINK ESTABLISHED";
+            setTimeout(() => { loading.style.display = 'none'; }, 800);
+            connStatus.innerText = "● SECURE UPLINK ESTABLISHED (1H)";
             connStatus.style.color = "#00ff00";
             panelTitle.innerText = "LIVE EVENT STREAM";
             processData(data.features, false);
@@ -252,7 +256,7 @@
             log("FATAL: Cannot reach data source.", "error");
             log("Activating Simulation Engine.", "info");
             
-            setTimeout(() => { loading.style.display = 'none'; }, 1000);
+            setTimeout(() => { loading.style.display = 'none'; }, 1500);
             connStatus.innerText = "⚠ OFFLINE - SIMULATION ACTIVE";
             connStatus.style.color = "#ffaa00";
             panelTitle.innerText = "SIMULATED EVENT STREAM";
@@ -261,10 +265,9 @@
     }
 
     function processData(features, isSim) {
-        let count = isSim ? 500 : features.length;
+        let count = isSim ? 150 : features.length;
         
-        // Critical Threshold adjusted for 24 hours of global news
-        let percent = Math.min((count / 2000) * 100, 100);
+        let percent = Math.min((count / 800) * 100, 100);
         gaugePointer.style.left = percent + "%";
 
         if (percent < 30) {
@@ -284,7 +287,7 @@
         } else {
             features.forEach(f => {
                 const [lon, lat] = f.geometry.coordinates;
-                // GDELT frequently places "unknown" locations at 0,0 - we filter those out
+                // Filter out bad coordinates from GDELT
                 if (lat !== 0 && lon !== 0) { 
                     createDot(lat, lon, f.properties.name);
                 }
@@ -309,7 +312,7 @@
     }
 
     function startSimulation() {
-        for(let i=0; i<150; i++) {
+        for(let i=0; i<80; i++) {
             const lat = (Math.random()*140)-70;
             const lon = (Math.random()*360)-180;
             createDot(lat, lon, "Simulated Alert");
@@ -357,7 +360,7 @@
                 addTickerItem(item.properties.name, "Negative Sentiment");
             }
             i++;
-        }, 1000);
+        }, 1200);
     }
 
     function addTickerItem(loc, text) {
