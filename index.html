@@ -1,3 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Sadness Monitor | Final Live Build</title>
+    <style>
+        :root {
+            --bg-color: #000;
+            --panel-bg: rgba(15, 15, 15, 0.95);
+            --accent-red: #ff3300; 
+            --accent-white: #ffffff;
+            --border: 1px solid #444;
+        }
+
+        body {
+            margin: 0; background-color: var(--bg-color); color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden; display: flex; flex-direction: column; height: 100vh;
+        }
+
+        /* --- HEADER --- */
+        header {
+            padding: 15px 30px; background: #050505; border-bottom: 2px solid #222;
+            display: flex; justify-content: space-between; align-items: center; z-index: 50;
+        }
+
+        .brand h1 { 
+            margin: 0; font-size: 1.5rem; color: var(--accent-red); 
+            text-transform: uppercase; font-weight: 900; letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--accent-red);
+        }
+
+        /* --- DIAGNOSTIC TERMINAL --- */
+        #terminal {
+            position: absolute; top: 90px; left: 30px; width: 350px;
+            background: rgba(0, 0, 0, 0.85); border: 1px solid #333;
+            padding: 12px; font-size: 0.75rem; color: #0f0;
+            font-family: 'Courier New', Courier, monospace;
+            z-index: 100; max-height: 250px; overflow-y: auto;
+            pointer-events: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        .log-error { color: #ff3300; margin-bottom: 4px; }
+        .log-success { color: #00ff00; margin-bottom: 4px; font-weight: bold; }
+        .log-info { color: #aaa; margin-bottom: 4px; }
+
+        /* --- GAUGE --- */
+        .gauge-module { width: 350px; position: relative; }
+        .gauge-header { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 0.8rem; color: #ccc; }
+        .gauge-track {
+            height: 14px; width: 100%;
+            background: linear-gradient(to right, #005500, #aaaa00, #ff0000);
+            border: 2px solid #fff; border-radius: 8px; position: relative;
+        }
+        #gauge-pointer {
+            position: absolute; top: -8px; left: 0%;
+            width: 0; height: 0;
+            border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 14px solid #fff;
+            transform: translateX(-50%); filter: drop-shadow(0 0 5px #000); transition: left 1s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .gauge-labels { display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.7rem; font-weight: bold; color: #888; }
+
+        /* --- MAP AREA --- */
+        #stage {
+            flex-grow: 1; position: relative; background: #000;
+            display: flex; justify-content: center; align-items: center; overflow: hidden;
+        }
+
+        #map-wrapper {
+            position: relative; width: 98%; max-width: 1700px; aspect-ratio: 2 / 1;
+            border: 1px solid #222; box-shadow: 0 0 100px #000 inset;
+        }
+
+        #map-background {
+            position: absolute; inset: 0; z-index: 1;
+            background-image: url('https://upload.wikimedia.org/wikipedia/commons/8/83/Equirectangular_projection_SW.jpg');
+            background-size: 100% 100%;
+            filter: grayscale(100%) invert(100%) brightness(0.4) contrast(1.5);
+        }
+
+        canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; mix-blend-mode: normal; }
+
+        /* --- PANELS --- */
+        .panel {
+            position: absolute; z-index: 40; background: var(--panel-bg); border: 1px solid #444;
+            width: 340px; bottom: 30px; right: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+        .panel-header {
+            padding: 12px 15px; border-bottom: 2px solid var(--accent-red);
+            font-size: 0.85rem; color: #fff; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center; background: #0a0a0a;
+        }
+        .blink-icon { width: 10px; height: 10px; background: var(--accent-red); border-radius: 50%; border: 1px solid #fff; animation: blink 0.8s infinite; }
+        #ticker { max-height: 250px; overflow: hidden; }
+        .item { padding: 10px 15px; border-bottom: 1px solid #222; font-size: 0.8rem; color: #ccc; animation: flash 0.5s; }
+        .item strong { color: #fff; font-size: 0.85rem; }
+        .item span { color: var(--accent-red); font-weight: bold; margin-right: 8px; }
+
+        @keyframes blink { 0%, 100% { opacity: 1; transform: scale(1.2); } 50% { opacity: 0.4; transform: scale(1); } }
+        @keyframes flash { from { background-color: #331111; } to { background-color: transparent; } }
+
+        #loading { position: absolute; inset:0; background:#000; z-index:100; display:flex; justify-content:center; align-items:center; color: #fff; font-size: 1.2rem; font-weight: bold; letter-spacing: 2px; flex-direction: column; }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div>INITIALIZING DIAGNOSTICS...</div>
+</div>
+
+<header>
+    <div class="brand">
+        <h1>Global Sadness Monitor</h1>
+        <div id="conn-status" style="font-size:0.75rem; color:#aaa; margin-top:5px;">● ROUTING CONNECTION...</div>
+    </div>
+
+    <div class="gauge-module">
+        <div class="gauge-header">
+            <span>Global Severity Level</span>
+            <span id="gauge-text" style="color:#fff; font-weight:bold;">STANDBY...</span>
+        </div>
+        <div class="gauge-track">
+            <div id="gauge-pointer"></div>
+        </div>
+        <div class="gauge-labels">
+            <span>STABLE</span>
+            <span>ELEVATED</span>
+            <span>CRITICAL</span>
+        </div>
+    </div>
+</header>
+
+<div id="terminal">
+    <div style="color: #fff; border-bottom: 1px solid #555; padding-bottom: 5px; margin-bottom: 8px; font-weight: bold;">NETWORK DIAGNOSTICS</div>
+</div>
+
+<div id="stage">
+    <div id="map-wrapper">
+        <div id="map-background"></div>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <span id="panel-title">AWAITING DATA</span>
+            <div class="blink-icon"></div>
+        </div>
+        <div id="ticker"></div>
+    </div>
+</div>
+
 <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
@@ -27,9 +178,9 @@
         terminal.scrollTop = terminal.scrollHeight;
     }
 
-    // --- THE FIX: STRICT GDELT URL FORMATTING ---
+    // --- THE WATERFALL FETCH ---
     async function fetchGdeltData() {
-        // Added &mode=PointData and capitalized format=GeoJSON to prevent HTTP 400 Bad Request
+        // Strict parameters: mode=PointData & format=GeoJSON
         const targetUrl = "https://api.gdeltproject.org/api/v2/geo/geo?query=tone%3C-5&mode=PointData&format=GeoJSON&timespan=24h";
         const encoded = encodeURIComponent(targetUrl);
         
@@ -45,7 +196,7 @@
                 log(`Attempting: ${route.name}`, "info");
                 
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000); 
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
                 
                 const res = await fetch(route.url, { 
                     cache: "no-store",
@@ -91,8 +242,8 @@
         try {
             const data = await fetchGdeltData();
             
-            setTimeout(() => { loading.style.display = 'none'; }, 500);
-            connStatus.innerText = "● SECURE UPLINK ESTABLISHED";
+            setTimeout(() => { loading.style.display = 'none'; }, 800);
+            connStatus.innerText = "● SECURE UPLINK ESTABLISHED (24H)";
             connStatus.style.color = "#00ff00";
             panelTitle.innerText = "LIVE EVENT STREAM";
             processData(data.features, false);
@@ -101,7 +252,7 @@
             log("FATAL: Cannot reach data source.", "error");
             log("Activating Simulation Engine.", "info");
             
-            setTimeout(() => { loading.style.display = 'none'; }, 1000);
+            setTimeout(() => { loading.style.display = 'none'; }, 1500);
             connStatus.innerText = "⚠ OFFLINE - SIMULATION ACTIVE";
             connStatus.style.color = "#ffaa00";
             panelTitle.innerText = "SIMULATED EVENT STREAM";
@@ -112,7 +263,6 @@
     function processData(features, isSim) {
         let count = isSim ? 500 : features.length;
         
-        // Critical Threshold adjusted for 24 hours of global news
         let percent = Math.min((count / 2000) * 100, 100);
         gaugePointer.style.left = percent + "%";
 
@@ -133,7 +283,7 @@
         } else {
             features.forEach(f => {
                 const [lon, lat] = f.geometry.coordinates;
-                // GDELT frequently places "unknown" locations at 0,0 - we filter those out
+                // Filter out bad coordinates from GDELT
                 if (lat !== 0 && lon !== 0) { 
                     createDot(lat, lon, f.properties.name);
                 }
@@ -206,7 +356,7 @@
                 addTickerItem(item.properties.name, "Negative Sentiment");
             }
             i++;
-        }, 1000);
+        }, 1200);
     }
 
     function addTickerItem(loc, text) {
@@ -220,3 +370,5 @@
     setTimeout(init, 500);
 
 </script>
+</body>
+</html>
