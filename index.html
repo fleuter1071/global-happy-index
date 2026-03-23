@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Global Sadness Monitor | v8.1 Auto-Proxy & Visual Fix</title>
+    <style>
+        :root {
+            --bg-color: #000;
+            --panel-bg: rgba(20, 20, 20, 0.95);
+            --accent-red: #ff3300; 
+            --accent-white: #ffffff;
+            --border: 1px solid #555;
+        }
+
+        body {
+            margin: 0; background-color: var(--bg-color); color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden; display: flex; flex-direction: column; height: 100vh;
+        }
+
+        /* --- HEADER --- */
+        header {
+            padding: 15px 30px; background: #000; border-bottom: 2px solid #333;
+            display: flex; justify-content: space-between; align-items: center; z-index: 50;
+        }
+
+        .brand h1 { 
+            margin: 0; font-size: 1.5rem; color: var(--accent-red); 
+            text-transform: uppercase; font-weight: 900; letter-spacing: 2px;
+            text-shadow: 0 0 10px var(--accent-red);
+        }
+
+        /* --- GAUGE --- */
+        .gauge-module { width: 350px; position: relative; }
+        .gauge-header { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; color: #ccc; }
+        .gauge-track {
+            height: 14px; width: 100%;
+            background: linear-gradient(to right, #006600, #aaaa00, #ff0000);
+            border: 2px solid #fff; border-radius: 8px; position: relative;
+        }
+        #gauge-pointer {
+            position: absolute; top: -8px; left: 0%;
+            width: 0; height: 0;
+            border-left: 10px solid transparent; border-right: 10px solid transparent; border-top: 14px solid #fff;
+            transform: translateX(-50%); filter: drop-shadow(0 0 5px #000); transition: left 1s cubic-bezier(0.25, 1, 0.5, 1);
+        }
+        .gauge-labels { display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.7rem; font-weight: bold; color: #888; }
+
+        /* --- MAP AREA --- */
+        #stage {
+            flex-grow: 1; position: relative; background: #000;
+            display: flex; justify-content: center; align-items: center; overflow: hidden;
+        }
+
+        #map-wrapper {
+            position: relative; width: 98%; max-width: 1700px; aspect-ratio: 2 / 1;
+            border: 2px solid #333; box-shadow: 0 0 100px #000 inset;
+        }
+
+        /* VISUAL FIX: The map filter is now isolated so it doesn't turn the red dots black */
+        #map-background {
+            position: absolute; inset: 0; z-index: 1;
+            background-image: url('https://upload.wikimedia.org/wikipedia/commons/8/83/Equirectangular_projection_SW.jpg');
+            background-size: 100% 100%;
+            filter: grayscale(100%) invert(100%) brightness(0.6) contrast(1.5);
+        }
+
+        canvas {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            z-index: 2; mix-blend-mode: normal; 
+        }
+
+        /* --- PANELS --- */
+        .panel {
+            position: absolute; z-index: 40; background: #000; border: 2px solid #555;
+            width: 340px; bottom: 30px; right: 30px;
+        }
+        .panel-header {
+            padding: 12px; border-bottom: 2px solid var(--accent-red);
+            font-size: 0.85rem; color: #fff; font-weight: bold;
+            display: flex; justify-content: space-between; align-items: center; background: #111;
+        }
+        .blink-icon { width: 10px; height: 10px; background: var(--accent-red); border-radius: 50%; border: 1px solid #fff; animation: blink 0.8s infinite; }
+        #ticker { max-height: 220px; overflow: hidden; }
+        .item { padding: 10px 15px; border-bottom: 1px solid #333; font-size: 0.8rem; color: #ccc; animation: flash 0.5s; }
+        .item strong { color: #fff; font-size: 0.85rem; }
+        .item span { color: var(--accent-red); font-weight: bold; margin-right: 8px; }
+
+        @keyframes blink { 0%, 100% { opacity: 1; transform: scale(1.2); } 50% { opacity: 0.4; transform: scale(1); } }
+        @keyframes flash { from { background-color: #331111; } to { background-color: transparent; } }
+
+        #loading { position: absolute; inset:0; background:#000; z-index:100; display:flex; justify-content:center; align-items:center; color: #fff; font-size: 1.2rem; font-weight: bold; letter-spacing: 2px; flex-direction: column; }
+    </style>
+</head>
+<body>
+
+<div id="loading">
+    <div>ESTABLISHING GDELT UPLINK...</div>
+    <div id="loading-sub" style="font-size: 0.7rem; color: #888; margin-top: 10px;">Contacting Primary Proxy Server</div>
+</div>
+
+<header>
+    <div class="brand">
+        <h1>Global Sadness Monitor</h1>
+        <div id="conn-status" style="font-size:0.75rem; color:#aaa; margin-top:5px;">● CONNECTING...</div>
+    </div>
+
+    <div class="gauge-module">
+        <div class="gauge-header">
+            <span>Global Severity Level</span>
+            <span id="gauge-text" style="color:#fff; font-weight:bold;">CALCULATING...</span>
+        </div>
+        <div class="gauge-track">
+            <div id="gauge-pointer"></div>
+        </div>
+        <div class="gauge-labels">
+            <span>STABLE</span>
+            <span>ELEVATED</span>
+            <span>CRITICAL</span>
+        </div>
+    </div>
+</header>
+
+<div id="stage">
+    <div id="map-wrapper">
+        <div id="map-background"></div>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="panel">
+        <div class="panel-header">
+            <span id="panel-title">LIVE EVENT STREAM</span>
+            <div class="blink-icon"></div>
+        </div>
+        <div id="ticker"></div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const wrapper = document.getElementById('map-wrapper');
+    const ticker = document.getElementById('ticker');
+    const gaugePointer = document.getElementById('gauge-pointer');
+    const gaugeText = document.getElementById('gauge-text');
+    const loading = document.getElementById('loading');
+    const loadingSub = document.getElementById('loading-sub');
+    const connStatus = document.getElementById('conn-status');
+    const panelTitle = document.getElementById('panel-title');
+
+    let w, h;
+    let particles = [];
+
+    function resize() {
+        w = canvas.width = wrapper.offsetWidth;
+        h = canvas.height = wrapper.offsetHeight;
+    }
+    window.addEventListener('resize', resize);
+
+    // CONNECTION FIX: The Proxy Waterfall
+    async function fetchGdeltData() {
+        const targetUrl = "https://api.gdeltproject.org/api/v2/geo/geo?query=tone%3C-5&format=geojson&timespan=1h";
+        const encodedUrl = encodeURIComponent(targetUrl);
+        
+        const proxies = [
+            `https://corsproxy.io/?url=${encodedUrl}`,
+            `https://api.allorigins.win/raw?url=${encodedUrl}`
+        ];
+
+        for (let proxy of proxies) {
+            try {
+                loadingSub.innerText = `Attempting connection via: ${new URL(proxy).hostname}`;
+                const res = await fetch(proxy, { cache: "no-store" });
+                if (!res.ok) continue; // Try next proxy if this one throws a 500/404
+                
+                const data = await res.json();
+                if (data.features) {
+                    return data; // Success
+                }
+            } catch (e) {
+                console.warn("Proxy failed:", proxy);
+            }
+        }
+        throw new Error("All proxies failed or empty data.");
+    }
+
+    async function init() {
+        resize();
+        try {
+            const data = await fetchGdeltData();
+            
+            if (data.features && data.features.length > 0) {
+                loading.style.display = 'none';
+                connStatus.innerText = "● LIVE GDELT FEED (HIGH NEGATIVITY)";
+                connStatus.style.color = "#00ff00";
+                processData(data.features, false);
+            } else {
+                throw new Error("No events currently matching criteria.");
+            }
+        } catch (e) {
+            console.error(e);
+            loading.style.display = 'none';
+            connStatus.innerText = "⚠ LIVE FEED BLOCKED - SIMULATION ACTIVE";
+            connStatus.style.color = "#ffaa00";
+            panelTitle.innerText = "SIMULATED EVENT STREAM";
+            processData(null, true);
+        }
+    }
+
+    function processData(features, isSim) {
+        let count = isSim ? 300 : features.length;
+        
+        let percent = Math.min((count / 300) * 100, 100);
+        gaugePointer.style.left = percent + "%";
+
+        if (percent < 30) {
+            gaugeText.innerText = "LOW / STABLE";
+            gaugeText.style.color = "#00ff00";
+        } else if (percent < 70) {
+            gaugeText.innerText = "ELEVATED ALERT";
+            gaugeText.style.color = "#ffff00";
+        } else {
+            gaugeText.innerText = "HIGH / CRITICAL";
+            gaugeText.style.color = "#ff3300";
+        }
+
+        particles = [];
+        if(isSim) {
+            startSimulation();
+        } else {
+            features.forEach(f => {
+                const [lon, lat] = f.geometry.coordinates;
+                createDot(lat, lon, f.properties.name);
+            });
+            startTicker(features);
+        }
+        animate();
+    }
+
+    function createDot(lat, lon, name) {
+        const x = (lon + 180) * (w / 360);
+        const y = ((-lat + 90) * (h / 180));
+
+        particles.push({
+            x, y,
+            radius: 3, 
+            glowSize: Math.random() * 15 + 10,
+            phase: Math.random() * Math.PI * 2,
+            speed: Math.random() * 0.05 + 0.03,
+            name: name
+        });
+    }
+
+    function startSimulation() {
+        for(let i=0; i<100; i++) {
+            const lat = (Math.random()*140)-70;
+            const lon = (Math.random()*360)-180;
+            createDot(lat, lon, "Simulated Alert");
+        }
+        setInterval(() => {
+            addTickerItem("System Test", "Simulation Active");
+        }, 1500);
+    }
+
+    function animate() {
+        ctx.clearRect(0, 0, w, h);
+        
+        particles.forEach(p => {
+            p.phase += p.speed;
+            
+            const sine = (Math.sin(p.phase) + 1) / 2;
+            const alpha = 0.6 + (sine * 0.4);
+            
+            ctx.globalCompositeOperation = 'lighter'; 
+            const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.glowSize);
+            g.addColorStop(0, `rgba(255, 50, 0, ${alpha})`); 
+            g.addColorStop(1, `rgba(255, 0, 0, 0)`);
+            
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.glowSize, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.globalCompositeOperation = 'source-over'; 
+            ctx.fillStyle = '#FFFFFF'; 
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
+        requestAnimationFrame(animate);
+    }
+
+    function startTicker(data) {
+        let i = 0;
+        setInterval(() => {
+            if(!data.length) return;
+            const item = data[i % data.length];
+            addTickerItem(item.properties.name || "Unknown", "Negative Sentiment");
+            i++;
+        }, 1500);
+    }
+
+    function addTickerItem(loc, text) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<span>>></span> <strong>${loc}</strong><br><span style="color:#888; font-weight:normal; font-size:0.7rem;">${text}</span>`;
+        ticker.prepend(div);
+        if(ticker.children.length > 5) ticker.lastChild.remove();
+    }
+
+    setTimeout(init, 500);
+
+</script>
+</body>
+</html>
